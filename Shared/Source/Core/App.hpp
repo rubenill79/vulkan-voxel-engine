@@ -1,10 +1,9 @@
 #pragma once
 
 #include "Platform/Window.hpp"
-#include "Platform/Pipeline.hpp"
 #include "Platform/Device.hpp"
-#include "Platform/SwapChain.hpp"
-#include "Platform/Model.hpp"
+#include "Platform/Renderer.hpp"
+#include "Object.hpp"
 
 #include <memory>
 #include <vector>
@@ -26,28 +25,12 @@ namespace VoxelEngine
         void run();
 
         private:
-        void loadModels();
-        void createPipelineLayout();
-        void createPipeline();
-        void createCommandBuffers();
-        void freeCommandBuffers();
-        void drawFrame();
-        void recreateSwapChain();
-        void recordCommandBuffer(int imageIndex);
-
-        void sierpinski(
-            std::vector<Model::Vertex> &vertices,
-            int depth,
-            glm::vec2 left,
-            glm::vec2 right,
-            glm::vec2 top);
+        void loadObjects();
 
         Window window{ width, height, "Hello World!" };
         Device device{ window };
-        std::unique_ptr<SwapChain> swapChain;
-        std::unique_ptr<Pipeline> pipeline;
-        VkPipelineLayout pipelineLayout;
-        std::vector<VkCommandBuffer> commandBuffers;
-        std::unique_ptr<Model> model;
+        Renderer renderer{ window, device };
+        
+        std::vector<Object> objects;
     };
 }
