@@ -26,7 +26,7 @@ include_directories(External/Source/glfw/include)
 include_directories(External/Source/vulkan/include)
 include_directories(External/Source/glslang)
 include_directories(External/Source/glm)
-include_directories(External/Source/stb)    
+include_directories(External/Source/stb)
 include_directories(External/Source/assimp/include)
 include_directories(Shared/Source)
 

@@ -69,14 +69,13 @@ namespace VoxelEngine
     void SimpleRenderSystem::renderGameObjects(VkCommandBuffer commandBuffer, std::vector<Object>& objects, Camera& camera)
     {
         pipeline->bind(commandBuffer);
+        auto projectionView = camera.getProjection() * camera.getView();
         for (auto& object : objects)
         {
-            object.transform.rotation.y = glm::mod(object.transform.rotation.y + 0.001f, glm::two_pi<float>());
-            object.transform.rotation.x = glm::mod(object.transform.rotation.x + 0.0005f, glm::two_pi<float>());
 
             SimplePushConstantData push{};
             push.color = object.color;
-            push.transform = camera.getProjection() * object.transform.mat4();
+            push.transform = projectionView * object.transform.mat4();
 
             vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SimplePushConstantData), &push);
 

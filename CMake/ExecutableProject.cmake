@@ -9,12 +9,12 @@ MACRO(CreateExecutableProject ProjectName)
 
     add_executable(${ProjectName} ${SOURCES} ${HEADERS})
 
-    target_link_libraries(${ProjectName} PRIVATE Shared)
+    target_link_libraries(${ProjectName} PRIVATE VoxelEngine)
 
     set(RESOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Resources)
 
     if(EXISTS ${RESOURCE_DIR})
-        file(COPY ${RESOURCE_DIR} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+      file(COPY ${RESOURCE_DIR} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
     endif()
 
 ENDMACRO()

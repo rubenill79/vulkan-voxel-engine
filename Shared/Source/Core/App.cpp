@@ -1,6 +1,7 @@
 #include "App.hpp"
 
 #include "Camera.hpp"
+#include "KeyboardController.hpp"
 #include "SimpleRenderSystem.hpp"
 
 #define GLM_FORCE_RADIANS
@@ -9,6 +10,7 @@
 #include <glm/gtc/constants.hpp>
 
 #include <array>
+#include <chrono>
 #include <cassert>
 #include <stdexcept>
 
@@ -23,13 +25,30 @@ namespace VoxelEngine
     {
         SimpleRenderSystem simpleRenderSystem{device, renderer.getSwapChainRenderPass()};
         Camera camera{};
+        //camera.setViewDirection(glm::vec3{0.f}, glm::vec3{0.5f, 0.f, 1.f});
+        camera.setViewTarget(glm::vec3{-1.0f, -2.0f, 2.0f}, glm::vec3{0.f, 0.f, 2.5f});
+
+        auto viewerObject = Object::createObject();
+        KeyboardController cameraController{};
+
+        auto currentTime = std::chrono::high_resolution_clock::now();
 
         while (!window.shouldClose())
         {
             glfwPollEvents();
+            auto newTime = std::chrono::high_resolution_clock::now();
+            float frameTime = std::chrono::duration<float, std::chrono::seconds::period>(newTime - currentTime).count();
+            currentTime = newTime;
+
+            //frameTime = glm::min(frameTime, MAX_FRAME_TIME);
+
+            cameraController.moveInPlaneXZ(window.getGLFWWindow(), frameTime, viewerObject);
+            camera.setViewYXZ(viewerObject.transform.translation, viewerObject.transform.rotation);
+
             float aspectRatio = renderer.getAspectRatio();
             //camera.setOrthographicProjection(-aspectRatio, aspectRatio, -1.f, 1.f, -1.f, 1.f);
             camera.setPerspectiveProjection(glm::radians(50.f), aspectRatio, 0.1f, 10.f);
+
             if (auto commandBuffer = renderer.beginFrame())
             {
                 renderer.beginSwapChainRenderPass(commandBuffer);
