@@ -27,6 +27,7 @@ target_link_libraries(VoxelEngine
         glslang
         "$ENV{VULKAN_SDK}/Lib/vulkan-1.lib"
         assimp
+        tinyobjloader
 )
 
 set(RESOURCE_LIMITS_DIR ${CMAKE_SOURCE_DIR}/External/Source/glslang/glslang/ResourceLimits)

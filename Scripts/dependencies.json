@@ -24,6 +24,10 @@
         "url": "https://github.com/nothings/stb"
     },
     {
+        "name": "tinyobjloader",
+        "url": "https://github.com/tinyobjloader/tinyobjloader"
+    },
+    {
         "name": "assimp",
         "url": "https://github.com/assimp/assimp",
         "revision": "v6.0.2"
