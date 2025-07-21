@@ -15,11 +15,10 @@ namespace VoxelEngine
     struct SimplePushConstantData
     {
         glm::mat4 transform{1.f};
-        alignas(16) glm::vec3 color;
+        glm::mat4 normalMatrix{1.f};
     };
-    
 
-    SimpleRenderSystem::SimpleRenderSystem(Device& device, VkRenderPass renderPass): device{device}
+    SimpleRenderSystem::SimpleRenderSystem(Device &device, VkRenderPass renderPass) : device{device}
     {
         createPipelineLayout();
         createPipeline(renderPass);
@@ -66,21 +65,22 @@ namespace VoxelEngine
             pipelineConfig);
     }
 
-    void SimpleRenderSystem::renderGameObjects(VkCommandBuffer commandBuffer, std::vector<Object>& objects, Camera& camera)
+    void SimpleRenderSystem::renderGameObjects(FrameInfo &frameInfo, std::vector<Object> &objects)
     {
-        pipeline->bind(commandBuffer);
-        auto projectionView = camera.getProjection() * camera.getView();
-        for (auto& object : objects)
+        pipeline->bind(frameInfo.commandBuffer);
+        auto projectionView = frameInfo.camera.getProjection() * frameInfo.camera.getView();
+        for (auto &object : objects)
         {
 
             SimplePushConstantData push{};
-            push.color = object.color;
-            push.transform = projectionView * object.transform.mat4();
+            auto modelMatrix = object.transform.mat4();
+            push.transform = projectionView * modelMatrix;
+            push.normalMatrix = object.transform.normalMatrix();
 
-            vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SimplePushConstantData), &push);
+            vkCmdPushConstants(frameInfo.commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SimplePushConstantData), &push);
 
-            object.model->bind(commandBuffer);
-            object.model->draw(commandBuffer);
+            object.model->bind(frameInfo.commandBuffer);
+            object.model->draw(frameInfo.commandBuffer);
         }
     }
 }

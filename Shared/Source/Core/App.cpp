@@ -1,5 +1,6 @@
 #include "App.hpp"
 
+#include "Platform/Buffer.hpp"
 #include "Camera.hpp"
 #include "KeyboardController.hpp"
 #include "SimpleRenderSystem.hpp"
@@ -17,12 +18,30 @@
 namespace VoxelEngine
 {
 
+    struct GlobalUniformBuffer
+    {
+        glm::mat4 projectionView{1.f};
+        glm::vec3 lightDirection = glm::normalize(glm::vec3{1.f, -3.f, -1.f});
+    };
+    
+
     App::App() { loadObjects(); }
 
     App::~App() {}
 
     void App::run()
     {
+        std::vector<std::unique_ptr<Buffer>> uniformBuffers(SwapChain::MAX_FRAMES_IN_FLIGHT);
+        for (int i = 0; i < uniformBuffers.size(); i++) {
+          uniformBuffers[i] = std::make_unique<Buffer>(
+              device,
+              sizeof(GlobalUniformBuffer),
+              1,
+              VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+          uniformBuffers[i]->map();
+        }
+
         SimpleRenderSystem simpleRenderSystem{device, renderer.getSwapChainRenderPass()};
         Camera camera{};
         // camera.setViewDirection(glm::vec3{0.f}, glm::vec3{0.5f, 0.f, 1.f});
@@ -47,12 +66,27 @@ namespace VoxelEngine
 
             float aspectRatio = renderer.getAspectRatio();
             // camera.setOrthographicProjection(-aspectRatio, aspectRatio, -1.f, 1.f, -1.f, 1.f);
-            camera.setPerspectiveProjection(glm::radians(50.f), aspectRatio, 0.1f, 10.f);
+            camera.setPerspectiveProjection(glm::radians(50.f), aspectRatio, 0.1f, 100.f);
 
             if (auto commandBuffer = renderer.beginFrame())
             {
+                int frameIndex = renderer.getFrameIndex();
+                FrameInfo frameInfo{
+                    .frameIndex = frameIndex,
+                    .frameTime = frameTime,
+                    .commandBuffer = commandBuffer,
+                    .camera = camera
+                };
+                
+                // Update global uniform buffer
+                GlobalUniformBuffer ubo{};
+                ubo.projectionView = camera.getProjection() * camera.getView();
+                uniformBuffers[frameIndex]->writeToBuffer(&ubo);
+                uniformBuffers[frameIndex]->flush();
+
+                // Render
                 renderer.beginSwapChainRenderPass(commandBuffer);
-                simpleRenderSystem.renderGameObjects(commandBuffer, objects, camera);
+                simpleRenderSystem.renderGameObjects(frameInfo, objects);
                 renderer.endSwapChainRenderPass(commandBuffer);
                 renderer.endFrame();
             }
@@ -62,13 +96,22 @@ namespace VoxelEngine
 
     void App::loadObjects()
     {
-        std::shared_ptr<Model> cubeModel = Model::createModelFromFile(device, "..\\Resources\\Models\\smooth_vase.obj");
+        std::shared_ptr<Model> smoothVaseModel = Model::createModelFromFile(device, "..\\Resources\\Models\\smooth_vase.obj");
+        std::shared_ptr<Model> flatVaseModel = Model::createModelFromFile(device, "..\\Resources\\Models\\flat_vase.obj");
 
-        auto cube = Object::createObject();
-        cube.model = cubeModel;
-        cube.transform.translation = {.0f, .0f, 2.5f};
-        cube.transform.scale = {.5f, .5f, .5f};
+        auto obj1 = Object::createObject();
+        obj1.model = smoothVaseModel;
+        obj1.transform.translation = {-.5f, .5f, 2.5f};
+        obj1.transform.scale = {3.f, 1.5f, 3.f};
+        // obj1.transform.scale = {.001f, .001f, .001f};
 
-        objects.push_back(std::move(cube));
+        objects.push_back(std::move(obj1));
+
+        auto obj2 = Object::createObject();
+        obj2.model = flatVaseModel;
+        obj2.transform.translation = {.5f, .5f, 2.5f};
+        obj2.transform.scale = {3.f, 1.5f, 3.f};
+
+        objects.push_back(std::move(obj2));
     }
 }
