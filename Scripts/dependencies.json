@@ -6,7 +6,7 @@
     },
     {
         "name": "vulkan",
-        "revision": "v1.4.310",
+        "revision": "v1.4.321",
         "url": "https://github.com/KhronosGroup/Vulkan-Headers"
     },
     {

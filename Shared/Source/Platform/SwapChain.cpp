@@ -60,12 +60,50 @@ SwapChain::~SwapChain() {
 
   vkDestroyRenderPass(device.device(), renderPass, nullptr);
 
-  // cleanup synchronization objects
-  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    vkDestroySemaphore(device.device(), renderFinishedSemaphores[i], nullptr);
-    vkDestroySemaphore(device.device(), imageAvailableSemaphores[i], nullptr);
-    vkDestroyFence(device.device(), inFlightFences[i], nullptr);
+  // Cleanup synchronization objects before destroying the swap chain or exiting the application.
+
+  // Destroy all semaphores that signal when an image is available for rendering.
+  // These semaphores are tied to frames in flight, so we destroy them by iterating
+  // over MAX_FRAMES_IN_FLIGHT-sized imageAvailableSemaphores vector.
+  for (size_t i = 0; i < imageAvailableSemaphores.size(); i++) {
+      vkDestroySemaphore(device.device(), imageAvailableSemaphores[i], nullptr);
   }
+
+  // Destroy all semaphores that signal rendering completion per swapchain image.
+  // Since renderFinishedSemaphores is sized to the number of swapchain images,
+  // we must destroy all of them individually to properly release resources.
+  for (size_t i = 0; i < renderFinishedSemaphores.size(); i++) {
+      vkDestroySemaphore(device.device(), renderFinishedSemaphores[i], nullptr);
+  }
+
+  // Destroy all fences used to synchronize CPU-GPU frame processing.
+  // These fences correspond to frames in flight, so their count matches MAX_FRAMES_IN_FLIGHT.
+  for (size_t i = 0; i < inFlightFences.size(); i++) {
+      vkDestroyFence(device.device(), inFlightFences[i], nullptr);
+  }
+
+  // Old combined cleanup loop destroying all sync objects by iterating MAX_FRAMES_IN_FLIGHT:
+  //
+  // for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+  //   vkDestroySemaphore(device.device(), renderFinishedSemaphores[i], nullptr);
+  //   vkDestroySemaphore(device.device(), imageAvailableSemaphores[i], nullptr);
+  //   vkDestroyFence(device.device(), inFlightFences[i], nullptr);
+  // }
+  //
+  // Why this is wrong:
+  //
+  // 1. The size of renderFinishedSemaphores is typically equal to the number of swapchain images,
+  //    which is often larger than MAX_FRAMES_IN_FLIGHT. Destroying only MAX_FRAMES_IN_FLIGHT of them
+  //    causes resource leaks and potential validation errors.
+  //
+  // 2. imageAvailableSemaphores and inFlightFences are sized by MAX_FRAMES_IN_FLIGHT (frames in flight),
+  //    so iterating up to MAX_FRAMES_IN_FLIGHT is correct for those, but not for renderFinishedSemaphores.
+  //
+  // 3. Mixing destruction of sync objects with different lifetimes and counts in one loop
+  //    risks out-of-bounds access if sizes differ, or incomplete cleanup.
+  //
+  // Correct cleanup separates them by their actual container sizes to ensure every semaphore and fence
+  // is destroyed exactly once without accessing invalid memory.
 }
 
 VkResult SwapChain::acquireNextImage(uint32_t *imageIndex) {
@@ -106,7 +144,15 @@ VkResult SwapChain::submitCommandBuffers(
   submitInfo.commandBufferCount = 1;
   submitInfo.pCommandBuffers = buffers;
 
-  VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
+  // Using `currentFrame` here would be incorrect because `renderFinishedSemaphores`
+  // must be tied to the specific swapchain image being rendered, not the CPU frame index.
+  // Each swapchain image can be acquired and presented out of order or multiple times
+  // across different frames, so associating the semaphore by image index ensures
+  // proper synchronization and prevents reusing a semaphore that might still be in use.
+  //
+  // Therefore, we use `renderFinishedSemaphores[*imageIndex]` to get the semaphore
+  // specific to the swapchain image we are working with.
+  VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[*imageIndex]};
   submitInfo.signalSemaphoreCount = 1;
   submitInfo.pSignalSemaphores = signalSemaphores;
 
@@ -351,7 +397,18 @@ void SwapChain::createDepthResources() {
 
 void SwapChain::createSyncObjects() {
   imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-  renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+  // Resize the renderFinishedSemaphores array to match the number of swapchain images.
+  // Each swapchain image needs its own unique semaphore to signal rendering completion.
+  // This prevents semaphore reuse conflicts, since swapchain images can be acquired,
+  // rendered, and presented independently and possibly out of order.
+  //
+  // This is different from imageAvailableSemaphores and inFlightFences, which are sized by
+  // MAX_FRAMES_IN_FLIGHT because they synchronize CPU frames in flight (e.g., triple buffering).
+  // Those are tied to the number of frames the CPU can prepare concurrently, not the swapchain images.
+  //
+  // Using one semaphore per swapchain image ensures synchronization correctness and avoids
+  // validation errors related to semaphore reuse while the GPU is still using an image.
+  renderFinishedSemaphores.resize(imageCount());
   inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
   imagesInFlight.resize(imageCount(), VK_NULL_HANDLE);
 
@@ -362,15 +419,51 @@ void SwapChain::createSyncObjects() {
   fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
   fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
+  // Create synchronization objects for each frame in flight:
+
+  // imageAvailableSemaphores and inFlightFences are created per frame in flight (MAX_FRAMES_IN_FLIGHT).
+  // These synchronize CPU work and GPU rendering at the frame level:
+  // - imageAvailableSemaphores signal when an image is ready for rendering.
+  // - inFlightFences ensure that the CPU waits for the GPU to finish processing a frame before reusing resources.
   for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    if (vkCreateSemaphore(device.device(), &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) !=
-            VK_SUCCESS ||
-        vkCreateSemaphore(device.device(), &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) !=
-            VK_SUCCESS ||
-        vkCreateFence(device.device(), &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
-      throw std::runtime_error("failed to create synchronization objects for a frame!");
+    if (vkCreateSemaphore(device.device(), &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
+      vkCreateFence(device.device(), &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
+      throw std::runtime_error("failed to create sync objects!");
     }
   }
+  // renderFinishedSemaphores must be created per swapchain image, not per frame in flight.
+  // Each swapchain image needs its own renderFinishedSemaphore to avoid reusing semaphores
+  // that might still be in use by the GPU presenting that image.
+  // Resizing renderFinishedSemaphores to the number of swapchain images (imageCount) ensures this.
+  for (size_t i = 0; i < renderFinishedSemaphores.size(); i++) {
+    if (vkCreateSemaphore(device.device(), &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS) {
+      throw std::runtime_error("failed to create renderFinishedSemaphore!");
+    }
+  }
+  // Why the old approach was wrong:
+  //
+  // The commented-out code created imageAvailableSemaphores, renderFinishedSemaphores,
+  // and inFlightFences all sized by MAX_FRAMES_IN_FLIGHT and created in the same loop.
+  //
+  // for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+  //   if (vkCreateSemaphore(device.device(), &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
+  //       vkCreateSemaphore(device.device(), &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
+  //       vkCreateFence(device.device(), &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
+  //     throw std::runtime_error("failed to create synchronization objects for a frame!");
+  //   }
+  //  }
+  // This is problematic because:
+  //
+  // 1.It wrongly assumes the number of renderFinishedSemaphores needed equals MAX_FRAMES_IN_FLIGHT.
+  //   But renderFinishedSemaphores must correspond to swapchain images (which is often > MAX_FRAMES_IN_FLIGHT).
+  //
+  // 2.Reusing renderFinishedSemaphores for multiple swapchain images risks semaphore reuse before
+  //   the GPU has finished with that image, leading to validation errors and undefined behavior.
+  //
+  // 3.Mixing the creation of frame-synced and image-synced semaphores in one loop ignores
+  //   their fundamentally different lifetimes and usage patterns.
+  //
+  // Separating creation ensures proper synchronization and correctness.
 }
 
 VkSurfaceFormatKHR SwapChain::chooseSwapSurfaceFormat(
