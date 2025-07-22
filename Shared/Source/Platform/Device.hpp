@@ -55,6 +55,8 @@ namespace VoxelEngine
     VkFormat findSupportedFormat(
         const std::vector<VkFormat> &candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
 
+    VkPhysicalDevice getPhysicalDevice() { return physicalDevice; }
+
     // Buffer Helper Functions
     void createBuffer(
         VkDeviceSize size,

@@ -1,6 +1,7 @@
 #include "App.hpp"
 
 #include "Platform/Buffer.hpp"
+#include "Platform/Texture.hpp"
 
 #include "Camera.hpp"
 #include "KeyboardController.hpp"
@@ -31,6 +32,7 @@ namespace VoxelEngine
         globalPool = DescriptorPool::Builder(device)
             .setMaxSets(SwapChain::MAX_FRAMES_IN_FLIGHT)
             .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, SwapChain::MAX_FRAMES_IN_FLIGHT)
+            .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, SwapChain::MAX_FRAMES_IN_FLIGHT)
             .build();
 
         loadObjects();
@@ -54,7 +56,15 @@ namespace VoxelEngine
 
         auto globalSetLayout = DescriptorSetLayout::Builder(device)
             .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+            .addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
             .build();
+
+        Texture texture = Texture(device, "..\\Resources\\Textures\\qilin.jpg");
+
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.sampler = texture.getSampler();
+        imageInfo.imageView = texture.getImageView();
+        imageInfo.imageLayout = texture.getImageLayout();
 
         std::vector<VkDescriptorSet> globalDescriptorSets(SwapChain::MAX_FRAMES_IN_FLIGHT);
         for (int i = 0; i < globalDescriptorSets.size(); i++)
@@ -62,6 +72,7 @@ namespace VoxelEngine
             auto bufferInfo = uniformBuffers[i]->descriptorInfo();
             DescriptorWriter(*globalSetLayout, *globalPool)
                 .writeBuffer(0, &bufferInfo)
+                .writeImage(1, &imageInfo)
                 .build(globalDescriptorSets[i]);
         }
 
@@ -82,7 +93,35 @@ namespace VoxelEngine
             float frameTime = std::chrono::duration<float, std::chrono::seconds::period>(newTime - currentTime).count();
             currentTime = newTime;
 
-            // frameTime = glm::min(frameTime, MAX_FRAME_TIME);
+            // Para simular la luz del sol que se mueve
+            static float totalTime = 0.f;
+            totalTime += frameTime;
+
+            // Ángulo que avanza con el tiempo (velocidad ajustable)
+            float lightAngle = totalTime * glm::radians(10.f); // gira 10 grados por segundo
+
+            // Calculamos la dirección de la luz como un vector que rota sobre el eje X (puedes elegir otro eje)
+            glm::vec3 lightDir = glm::normalize(glm::vec3{
+                cos(lightAngle),
+                -sin(lightAngle),
+                -1.f});
+
+            // Supongamos que quieres que rote a 30 grados por segundo
+            float rotationSpeedDegrees = 30.f;
+            float rotationSpeedRadians = glm::radians(rotationSpeedDegrees);
+
+            // Asumiendo que el objeto que quieres girar es el primero (objeto 0)
+            if (!objects.empty())
+            {
+                float newYRotation = objects[0].transform.rotation.y + rotationSpeedRadians * frameTime;
+            
+                // Mantener el ángulo en [0, 2pi]
+                if (newYRotation > glm::two_pi<float>()) {
+                    newYRotation -= glm::two_pi<float>();
+                }
+            
+                objects[0].transform.rotation.y = newYRotation;
+            }
 
             cameraController.moveInPlaneXZ(window.getGLFWWindow(), frameTime, viewerObject);
             camera.setViewYXZ(viewerObject.transform.translation, viewerObject.transform.rotation);
@@ -99,6 +138,8 @@ namespace VoxelEngine
                 // Update global uniform buffer
                 GlobalUniformBuffer ubo{};
                 ubo.projectionView = camera.getProjection() * camera.getView();
+                ubo.lightDirection = lightDir; // <-- actualizamos la luz aquí
+
                 uniformBuffers[frameIndex]->writeToBuffer(&ubo);
                 uniformBuffers[frameIndex]->flush();
 
@@ -121,7 +162,7 @@ namespace VoxelEngine
         obj1.model = smoothVaseModel;
         obj1.transform.translation = {-.5f, .5f, 2.5f};
         float radianes = glm::radians(180.0f);
-        obj1.transform.rotation = {0.f, 0.f, -radianes};
+        obj1.transform.rotation = {0.f, 0.f, 0.f};
         // obj1.transform.scale = {3.f, 1.5f, 3.f};
         obj1.transform.scale = {.001f, .001f, .001f};
 
