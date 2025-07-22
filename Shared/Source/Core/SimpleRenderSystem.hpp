@@ -14,7 +14,7 @@ namespace VoxelEngine
     class SimpleRenderSystem
     {
     public:
-        SimpleRenderSystem(Device &device, VkRenderPass renderPass);
+        SimpleRenderSystem(Device &device, VkRenderPass renderPass, VkDescriptorSetLayout globalSetLayout);
         ~SimpleRenderSystem();
 
         SimpleRenderSystem(const SimpleRenderSystem &) = delete;
@@ -23,7 +23,7 @@ namespace VoxelEngine
         void renderGameObjects(FrameInfo &frameInfo, std::vector<Object> &objects);
 
     private:
-        void createPipelineLayout();
+        void createPipelineLayout(VkDescriptorSetLayout globalSetLayout);
         void createPipeline(VkRenderPass renderPass);
 
         Device &device;

@@ -1,6 +1,7 @@
 #include "App.hpp"
 
 #include "Platform/Buffer.hpp"
+
 #include "Camera.hpp"
 #include "KeyboardController.hpp"
 #include "SimpleRenderSystem.hpp"
@@ -9,6 +10,7 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
+#include <glm/gtc/matrix_transform.hpp> // Para glm::radians
 
 #include <array>
 #include <chrono>
@@ -23,26 +25,47 @@ namespace VoxelEngine
         glm::mat4 projectionView{1.f};
         glm::vec3 lightDirection = glm::normalize(glm::vec3{1.f, -3.f, -1.f});
     };
-    
 
-    App::App() { loadObjects(); }
+    App::App()
+    {
+        globalPool = DescriptorPool::Builder(device)
+            .setMaxSets(SwapChain::MAX_FRAMES_IN_FLIGHT)
+            .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, SwapChain::MAX_FRAMES_IN_FLIGHT)
+            .build();
+
+        loadObjects();
+    }
 
     App::~App() {}
 
     void App::run()
     {
         std::vector<std::unique_ptr<Buffer>> uniformBuffers(SwapChain::MAX_FRAMES_IN_FLIGHT);
-        for (int i = 0; i < uniformBuffers.size(); i++) {
-          uniformBuffers[i] = std::make_unique<Buffer>(
-              device,
-              sizeof(GlobalUniformBuffer),
-              1,
-              VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-          uniformBuffers[i]->map();
+        for (int i = 0; i < uniformBuffers.size(); i++)
+        {
+            uniformBuffers[i] = std::make_unique<Buffer>(
+                device,
+                sizeof(GlobalUniformBuffer),
+                1,
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+            uniformBuffers[i]->map();
         }
 
-        SimpleRenderSystem simpleRenderSystem{device, renderer.getSwapChainRenderPass()};
+        auto globalSetLayout = DescriptorSetLayout::Builder(device)
+            .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+            .build();
+
+        std::vector<VkDescriptorSet> globalDescriptorSets(SwapChain::MAX_FRAMES_IN_FLIGHT);
+        for (int i = 0; i < globalDescriptorSets.size(); i++)
+        {
+            auto bufferInfo = uniformBuffers[i]->descriptorInfo();
+            DescriptorWriter(*globalSetLayout, *globalPool)
+                .writeBuffer(0, &bufferInfo)
+                .build(globalDescriptorSets[i]);
+        }
+
+        SimpleRenderSystem simpleRenderSystem{device, renderer.getSwapChainRenderPass(), globalSetLayout->getDescriptorSetLayout()};
         Camera camera{};
         // camera.setViewDirection(glm::vec3{0.f}, glm::vec3{0.5f, 0.f, 1.f});
         camera.setViewTarget(glm::vec3{-1.0f, -2.0f, 2.0f}, glm::vec3{0.f, 0.f, 2.5f});
@@ -71,13 +94,8 @@ namespace VoxelEngine
             if (auto commandBuffer = renderer.beginFrame())
             {
                 int frameIndex = renderer.getFrameIndex();
-                FrameInfo frameInfo{
-                    .frameIndex = frameIndex,
-                    .frameTime = frameTime,
-                    .commandBuffer = commandBuffer,
-                    .camera = camera
-                };
-                
+                FrameInfo frameInfo{frameIndex, frameTime, commandBuffer, camera, globalDescriptorSets[frameIndex]};
+
                 // Update global uniform buffer
                 GlobalUniformBuffer ubo{};
                 ubo.projectionView = camera.getProjection() * camera.getView();
@@ -96,22 +114,24 @@ namespace VoxelEngine
 
     void App::loadObjects()
     {
-        std::shared_ptr<Model> smoothVaseModel = Model::createModelFromFile(device, "..\\Resources\\Models\\smooth_vase.obj");
+        std::shared_ptr<Model> smoothVaseModel = Model::createModelFromFile(device, "..\\Resources\\Models\\qilin.obj");
         std::shared_ptr<Model> flatVaseModel = Model::createModelFromFile(device, "..\\Resources\\Models\\flat_vase.obj");
 
         auto obj1 = Object::createObject();
         obj1.model = smoothVaseModel;
         obj1.transform.translation = {-.5f, .5f, 2.5f};
-        obj1.transform.scale = {3.f, 1.5f, 3.f};
-        // obj1.transform.scale = {.001f, .001f, .001f};
+        float radianes = glm::radians(180.0f);
+        obj1.transform.rotation = {0.f, 0.f, -radianes};
+        // obj1.transform.scale = {3.f, 1.5f, 3.f};
+        obj1.transform.scale = {.001f, .001f, .001f};
 
         objects.push_back(std::move(obj1));
 
-        auto obj2 = Object::createObject();
-        obj2.model = flatVaseModel;
-        obj2.transform.translation = {.5f, .5f, 2.5f};
-        obj2.transform.scale = {3.f, 1.5f, 3.f};
-
-        objects.push_back(std::move(obj2));
+        // auto obj2 = Object::createObject();
+        // obj2.model = flatVaseModel;
+        // obj2.transform.translation = {.5f, .5f, 2.5f};
+        // obj2.transform.scale = {3.f, 1.5f, 3.f};
+        //
+        // objects.push_back(std::move(obj2));
     }
 }
