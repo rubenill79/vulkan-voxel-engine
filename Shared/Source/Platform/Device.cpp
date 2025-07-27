@@ -137,12 +137,27 @@ namespace VoxelEngine
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
+    // Priorizar GPU dedicada
     for (const auto &device : devices)
     {
-      if (isDeviceSuitable(device))
+      VkPhysicalDeviceProperties props;
+      vkGetPhysicalDeviceProperties(device, &props);
+      if (isDeviceSuitable(device) && props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
       {
         physicalDevice = device;
         break;
+      }
+    }
+    // Si no hay dedicada, usar la primera adecuada
+    if (physicalDevice == VK_NULL_HANDLE)
+    {
+      for (const auto &device : devices)
+      {
+        if (isDeviceSuitable(device))
+        {
+          physicalDevice = device;
+          break;
+        }
       }
     }
 
